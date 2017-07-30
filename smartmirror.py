@@ -10,7 +10,9 @@ import requests
 import json
 import traceback
 import feedparser
-
+import urllib
+import os
+from AnimatedGif import AnimatedGif
 from PIL import Image, ImageTk
 from contextlib import contextmanager
 
@@ -20,7 +22,7 @@ ui_locale = '' # e.g. 'fr_FR' fro French, '' as default
 time_format = 12 # 12 or 24
 date_format = "%b %d, %Y" # check python doc for strftime() for options
 news_country_code = 'us'
-weather_api_token = '<TOKEN>' # create account at https://darksky.net/dev/
+weather_api_token = 'f790c1bd866b024679e147b43c2fb8b2' # create account at https://darksky.net/dev/
 weather_lang = 'en' # see https://darksky.net/dev/docs/forecast for full list of language parameters values
 weather_unit = 'us' # see https://darksky.net/dev/docs/forecast for full list of unit parameters values
 latitude = None # Set this if IP location lookup does not work for you (must be a string)
@@ -29,6 +31,8 @@ xlarge_text_size = 94
 large_text_size = 48
 medium_text_size = 28
 small_text_size = 18
+frames = []
+weatherInd = 0
 
 @contextmanager
 def setlocale(name): #thread proof function to work with locale
@@ -46,7 +50,7 @@ icon_lookup = {
     'wind': "assets/Wind.png",   #wind
     'cloudy': "assets/Cloud.png",  # cloudy day
     'partly-cloudy-day': "assets/PartlySunny.png",  # partly cloudy day
-    'rain': "assets/Rain.png",  # rain day
+    'rain': "assets/Rain.gif",  # rain day
     'snow': "assets/Snow.png",  # snow day
     'snow-thin': "assets/Snow.png",  # sleet day
     'fog': "assets/Haze.png",  # fog day
@@ -56,6 +60,80 @@ icon_lookup = {
     'tornado': "assests/Tornado.png",    # tornado
     'hail': "assests/Hail.png"  # hail
 }
+
+
+class oneBus(Frame):
+    def __init__(self, parent, *args, **kwargs):
+        Frame.__init__(self, parent, bg='black')
+        self.config(bg='black')
+        self.transitContainer = Frame(self, bg="black")
+        self.transitContainer.pack(side=TOP)
+        for x in range (0, 3): #(len(transitText))):
+            entry = TransitData(self.transitContainer, "Initializing...")
+            entry.pack(side=TOP, anchor=W)
+        self.get_oneBusData()
+
+
+    def get_oneBusData(self):
+        oneBusURL = "http://api.pugetsound.onebusaway.org/api/where/arrivals-and-departures-for-stop/1_16480.json?&minutesAfter=60&key=5f44b6f4-fb7e-4c64-bd0f-2250b3cb4867"
+        response = urllib.urlopen(oneBusURL)
+        parsedOneBus= json.loads(response.read())
+        #availRange = len(parsedOneBus['data']['entry']['arrivalsAndDepartures'])
+        #availRange = min(availRange, 2)
+        transitText = []
+
+        #Puts string data into list
+        for x in range (0, 3):#(availRange)):
+            try:
+                if (parsedOneBus['data']['entry']['arrivalsAndDepartures'] and parsedOneBus['data']['entry']['arrivalsAndDepartures'][x]['predictedArrivalTime'] != 0):
+                    busTimeNearest = parsedOneBus['data']['entry']['arrivalsAndDepartures'][x]['predictedArrivalTime']
+                    timeAway = int((float(busTimeNearest/1000) - time.time())/(60))
+                    if (timeAway == 0):
+                        transitText.append(" " + "NOW")
+
+                    else:
+                        transitText.append(" " + str(timeAway) + "m away")
+
+                elif(parsedOneBus['data']['entry']['arrivalsAndDepartures']):
+                    busTimeNearest = parsedOneBus['data']['entry']['arrivalsAndDepartures'][x]['scheduledArrivalTime']
+                    timeAway = int((float(busTimeNearest/1000) - time.time())/(60))
+                    if (timeAway == 0):
+                        transitText.append(" " + "NOW *Scheduled")
+
+                    else:
+                        transitText.append(" " + str(timeAway) + "m away *Scheduled")
+
+                else:
+                    transitText.append(" ---")
+
+            except:
+                transitText.append(" ---")
+
+        #updates widget with new list
+        #print(str(transitText) + " =list")
+        childrenW = self.transitContainer.winfo_children()
+        for x in range (0, 3): #(len(transitText))):
+            childrenW[x].eventNameLbl.config(text = (" " + transitText[x]))
+            #print "test " + str(x)
+        self.after(6000, self.get_oneBusData)
+
+
+class TransitData(Frame):
+    def __init__(self, parent, event_name=""):
+        Frame.__init__(self, parent, bg='black')
+
+        image = Image.open("assets/bus.png")
+        image = image.resize((25, 25)) #, Image.ANTIALIAS)
+        image = image.convert('RGB')
+        photo = ImageTk.PhotoImage(image)
+
+        self.iconLbl = Label(self, bg='black', image=photo)
+        self.iconLbl.image = photo
+        self.iconLbl.pack(side=LEFT, anchor=N)
+
+        self.eventName = event_name
+        self.eventNameLbl = Label(self, text=self.eventName, font=('Helvetica', small_text_size), fg="white", bg="black")
+        self.eventNameLbl.pack(side=LEFT, anchor=N)
 
 
 class Clock(Frame):
@@ -112,14 +190,14 @@ class Weather(Frame):
         self.degreeFrm.pack(side=TOP, anchor=W)
         self.temperatureLbl = Label(self.degreeFrm, font=('Helvetica', xlarge_text_size), fg="white", bg="black")
         self.temperatureLbl.pack(side=LEFT, anchor=N)
-        self.iconLbl = Label(self.degreeFrm, bg="black")
-        self.iconLbl.pack(side=LEFT, anchor=N, padx=20)
-        self.currentlyLbl = Label(self, font=('Helvetica', medium_text_size), fg="white", bg="black")
-        self.currentlyLbl.pack(side=TOP, anchor=W)
+        self.iconLbl = Label(self.degreeFrm, bg="black", image = '')
+        self.iconLbl.pack(side=LEFT, anchor=S, padx=10)
+        #self.currentlyLbl = Label(self, font=('Helvetica', medium_text_size), fg="white", bg="black")
+        #self.currentlyLbl.pack(side=TOP, anchor=W)
         self.forecastLbl = Label(self, font=('Helvetica', small_text_size), fg="white", bg="black")
         self.forecastLbl.pack(side=TOP, anchor=W)
-        self.locationLbl = Label(self, font=('Helvetica', small_text_size), fg="white", bg="black")
-        self.locationLbl.pack(side=TOP, anchor=W)
+        #self.locationLbl = Label(self, font=('Helvetica', small_text_size), fg="white", bg="black")
+        #self.locationLbl.pack(side=TOP, anchor=W)
         self.get_weather()
 
     def get_ip(self):
@@ -162,41 +240,49 @@ class Weather(Frame):
             forecast2 = weather_obj["hourly"]["summary"]
 
             icon_id = weather_obj['currently']['icon']
-            icon2 = None
+            iconImg = None
 
+            #get weather icon
             if icon_id in icon_lookup:
-                icon2 = icon_lookup[icon_id]
+                iconImg = icon_lookup[icon_id]
 
-            if icon2 is not None:
-                if self.icon != icon2:
-                    self.icon = icon2
-                    image = Image.open(icon2)
-                    image = image.resize((100, 100), Image.ANTIALIAS)
-                    image = image.convert('RGB')
-                    photo = ImageTk.PhotoImage(image)
+            if iconImg is not None:
+                if (True): #self.icon != iconImg:
+                    global frames
+                    frames = []
+                    self.processImage("assets/Rain.gif")
+                    print("frames len = " + str(len(frames)))
 
-                    self.iconLbl.config(image=photo)
-                    self.iconLbl.image = photo
+                    Photo = frames[0]
+                    #im = im.resize((150,150), Image.ANTIALIAS)
+                    #Photo = ImageTk.PhotoImage(im)
+
+                    self.iconLbl.config(image=Photo)
+                    self.iconLbl.image = Photo
+                    self.after(0, self.update)
             else:
                 # remove image
                 self.iconLbl.config(image='')
+                print("HELPPP")
 
+
+            #weather text
             if self.currently != currently2:
                 self.currently = currently2
-                self.currentlyLbl.config(text=currently2)
+                #self.currentlyLbl.config(text=currently2)
             if self.forecast != forecast2:
                 self.forecast = forecast2
                 self.forecastLbl.config(text=forecast2)
             if self.temperature != temperature2:
                 self.temperature = temperature2
                 self.temperatureLbl.config(text=temperature2)
-            if self.location != location2:
-                if location2 == ", ":
-                    self.location = "Cannot Pinpoint Location"
-                    self.locationLbl.config(text="Cannot Pinpoint Location")
-                else:
-                    self.location = location2
-                    self.locationLbl.config(text=location2)
+            # if self.location != location2:
+            #     if location2 == ", ":
+            #         self.location = "Cannot Pinpoint Location"
+            #         self.locationLbl.config(text="Cannot Pinpoint Location")
+            #     else:
+            #         self.location = location2
+            #         self.locationLbl.config(text=location2)
         except Exception as e:
             traceback.print_exc()
             print "Error: %s. Cannot get weather." % e
@@ -207,6 +293,67 @@ class Weather(Frame):
     def convert_kelvin_to_fahrenheit(kelvin_temp):
         return 1.8 * (kelvin_temp - 273) + 32
 
+    def update(self):
+        global weatherInd
+        global frames
+
+        if weatherInd == (len(frames)):
+            weatherInd = 0
+        Photo = frames[weatherInd]
+
+        self.iconLbl.config(image=Photo)
+        self.iconLbl.image = Photo
+
+        weatherInd+=1
+
+        self.after(20, self.update)
+
+    def processImage(self, path):
+        '''
+        Iterate the GIF, extracting each frame.
+        '''
+        global frames
+
+        mode = 'global'
+
+        im = Image.open(path)
+
+        i = 0
+        p = im.getpalette()
+        last_frame = im.convert('RGBA')
+
+        try:
+            while True:
+                print "saving %s (%s) frame %d, %s %s" % (path, mode, i, im.size, im.tile)
+
+                '''
+                If the GIF uses local colour tables, each frame will have its own palette.
+                If not, we need to apply the global palette to the new frame.
+                '''
+                if not im.getpalette():
+                    im.putpalette(p)
+
+                new_frame = Image.new('RGBA', im.size)
+
+                '''
+                Is this file a "partial"-mode GIF where frames update a region of a different size to the entire image?
+                If so, we need to construct the new frame by pasting it on top of the preceding frames.
+                '''
+                if mode == 'partial':
+                    new_frame.paste(last_frame)
+
+                new_frame.paste(im, (0,0), im.convert('RGBA'))
+
+
+                new_frame = new_frame.resize((100,100), Image.ANTIALIAS)
+                Photo = ImageTk.PhotoImage(new_frame)
+                frames.append(Photo)
+
+                i += 1
+                last_frame = new_frame
+                im.seek(im.tell() + 1)
+        except EOFError:
+            pass
 
 class News(Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -224,8 +371,8 @@ class News(Frame):
             # remove all children
             for widget in self.headlinesContainer.winfo_children():
                 widget.destroy()
-            if news_country_code == None:
-                headlines_url = "https://news.google.com/news?ned=us&output=rss"
+            if news_country_code != None:
+                headlines_url = "http://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
             else:
                 headlines_url = "https://news.google.com/news?ned=%s&output=rss" % news_country_code
 
@@ -303,14 +450,18 @@ class FullscreenWindow:
         self.tk.bind("<Return>", self.toggle_fullscreen)
         self.tk.bind("<Escape>", self.end_fullscreen)
         # clock
+        self.weather = Weather(self.topFrame)
+        self.weather.pack(side=LEFT, anchor=N, padx=100, pady=60)
         self.clock = Clock(self.topFrame)
         self.clock.pack(side=RIGHT, anchor=N, padx=100, pady=60)
         # weather
-        self.weather = Weather(self.topFrame)
-        self.weather.pack(side=LEFT, anchor=N, padx=100, pady=60)
+
         # news
-        self.news = News(self.bottomFrame)
-        self.news.pack(side=LEFT, anchor=S, padx=100, pady=60)
+        #self.news = News(self.bottomFrame)
+        #self.news.pack(side=LEFT, anchor=S, padx=100, pady=60)
+
+        self.oneBus = oneBus(self.bottomFrame)
+        self.oneBus.pack(side=LEFT, anchor=S, padx=100, pady=60)
         # calender - removing for now
         # self.calender = Calendar(self.bottomFrame)
         # self.calender.pack(side = RIGHT, anchor=S, padx=100, pady=60)
